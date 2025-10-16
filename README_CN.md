@@ -1,615 +1,561 @@
-# 多智能体强化学习环境集合 (MARL Environments)
+# 多智能体强化学习环境集合
 
-## 📖 简介
+中文文档 | [English](./README.md)
 
-本文件夹包含了一套专为多智能体强化学习(MARL)设计的环境集合。所有环境都遵循统一的接口规范，支持集中式训练分布式执行(CTDE)算法，如QMIX、VDN、MADDPG等。
+## 概述
 
-## 🎯 系统要求
+本仓库提供了**5个多样化的多智能体强化学习(MARL)环境**,专为研究和评估MARL算法而设计,特别适用于集中训练分散执行(CTDE)算法,如QMIX、VDN和MADDPG。
 
-- **操作系统**: Ubuntu 20.04+ (推荐 Ubuntu 22.04/24.04)
-- **Python版本**: Python 3.8+
-- **核心依赖**: NumPy, Gymnasium, Pygame, Matplotlib
+### 环境列表
 
-## 🏗️ 环境列表
-
-### 1. CM (Collaborative Moving) - 协作搬运环境
-
-**环境描述**:  
-一个简单而有效的多智能体协作环境，智能体需要合作将一个2×2的箱子推到指定的目标区域。
-
-**核心特点**:
-- 🤝 **协作机制**: 多个智能体需要从不同侧面推箱子，成功率随协作人数增加
-- 🎮 **简单操作**: 5个离散动作（停留、上下左右移动）
-- 🏆 **团队奖励**: 所有智能体获得相同的团队奖励
-- ⚙️ **难度可配**: 支持easy、normal、hard三种难度级别
-- 👥 **智能体数量**: 2-4个智能体（可配置）
-- 📐 **网格大小**: 7×7网格（可配置）
-
-**关键参数**:
-- 动作空间: 5个离散动作
-- 观察空间: 6 + 2×(n_agents-1) 维向量
-- 最大步数: 50-100步（根据难度）
-
-**文件**:
-- `env_cm.py`: 基础环境实现
-- `env_cm_ctde.py`: CTDE兼容版本
-- `core.py`: 核心类定义
-- `config.py`: 配置管理
-- `renderer.py`: 可视化渲染
+| 环境名称 | 缩写 | 任务类型 | 智能体数量 | 难度等级 |
+|---------|------|---------|-----------|---------|
+| 协作推箱 | CM | 合作与协调 | 2-4 | debug, easy, normal, hard |
+| 动态护送任务 | DEM | 动态角色形成 | 3 | easy, normal, hard |
+| 异构资源采集 | HRG | 异构合作 | 2-6 | easy, normal, hard, ultra_fast |
+| 智能制造流程调度 | MSFS | 角色涌现 | 1-3 | easy, normal, hard |
+| 星际争霸多智能体挑战 | SMAC | 战斗策略 | 地图决定 | easy, normal, hard |
 
 ---
 
-### 2. DEM (Dynamic Escort Mission) - 动态护送任务环境
+## 1. CM (协作推箱) 环境
 
-**环境描述**:  
-一个多智能体强化学习环境，智能体需要动态形成角色来护送VIP穿越危险区域，同时应对各种威胁。
+### 任务描述
 
-**核心特点**:
-- 🎭 **角色涌现**: 智能体自然形成防御者、护卫者、侦察者等角色
-- 🗺️ **复杂地形**: 河流和森林影响移动和战斗
-- 🎯 **动态威胁**: 敌人根据VIP状态自适应生成
-- 💬 **通信机制**: 支持智能体之间的信息交流
-- 🏥 **VIP保护**: 核心目标是保护VIP安全到达目的地
-- 👥 **智能体数量**: 3个特种部队智能体（可配置）
-- 📐 **网格大小**: 10×12 或 12×12（根据难度）
+智能体必须合作将一个箱子从初始位置推到目标位置。箱子只有在多个智能体从不同方向推动时才能成功移动,成功概率随合作智能体数量增加而提高。
 
-**关键参数**:
-- 动作空间: 10个离散动作（移动、攻击、观察、守护、通信等）
-- 观察空间: 约60维向量（包含自身状态、VIP状态、队友状态、威胁状态等）
-- 全局状态维度: 41维
-- 最大步数: 100-200步（根据难度）
+### 核心特性
+- **合作机制**: 推箱需要多方向协调
+- **概率成功**: 
+  - 1个智能体: 50%成功率
+  - 2个智能体: 75%成功率
+  - 3个智能体: 90%成功率
+  - 4个智能体: 100%成功率
+- **可配置难度**: 4个难度级别,网格大小和智能体数量各不相同
 
-**文件**:
-- `env_dem.py`: 基础环境实现
-- `env_dem_ctde.py`: CTDE兼容版本
-- `core.py`: 核心类（Agent、VIP、Threat等）
-- `config.py`: 配置管理
-- `renderer.py`: 可视化渲染
+### 动作空间 (每个智能体5个离散动作)
 
----
+| 动作ID | 名称 | 描述 |
+|-------|------|------|
+| 0 | 保持 | 智能体保持当前位置 |
+| 1 | 上移 | 向上移动一格 |
+| 2 | 下移 | 向下移动一格 |
+| 3 | 左移 | 向左移动一格 |
+| 4 | 右移 | 向右移动一格 |
 
-### 3. HRG (Heterogeneous Resource Gathering) - 异构资源收集环境
+### 观测空间
 
-**环境描述**:  
-一个异构智能体团队协作收集资源的环境，不同角色的智能体具有不同的能力和职责。
+**向量格式 (长度 = 6 + 2×(n_agents-1)):**
+- 智能体自身位置 (2个值)
+- 箱子中心位置 (2个值)
+- 目标中心位置 (2个值)
+- 其他智能体的相对位置 (2×(n_agents-1)个值)
 
-**核心特点**:
-- 🔍 **异构角色**: 侦察兵、工人、运输车三种不同角色
-- 💰 **资源管理**: 金币和木材两种资源，价值和采集难度不同
-- 👁️ **部分可观测**: 不同角色具有不同的视野范围
-- 🚧 **障碍物**: 随机分布的不可通行区域
-- 🏭 **基地系统**: 资源需要运回基地才能获得奖励
-- 👥 **智能体配置**: 2个侦察兵 + 3个工人 + 1个运输车
-- 📐 **网格大小**: 10×10网格（可配置）
+对于2智能体环境,观测长度 = 8:
+```
+[self_x, self_y, box_x, box_y, goal_x, goal_y, other_rel_x, other_rel_y]
+```
 
-**关键参数**:
-- 动作空间: 8个离散动作（移动、采集、传输、存放、等待）
-- 观察空间: 80维向量（自身状态、视野内实体、全局信息）
-- 全局状态维度: 41维
-- 最大步数: 200-300步（根据难度）
-- 资源配置: 3个金矿（价值10/单位）+ 10个木材（价值2/单位）
+### CTDE全局状态
 
-**文件**:
-- `env_hrg.py`: 基础环境实现
-- `env_hrg_ctde.py`: CTDE兼容版本
-- `core.py`: 核心类（Agent、Resource等）
-- `config.py`: 配置管理
-- `renderer.py`: 可视化渲染
+**全局状态组成:**
+- 所有智能体位置 (2 × n_agents 个值)
+- 箱子位置和大小 (3个值)
+- 目标位置和大小 (3个值)
+- 智能体间相对位置
 
----
+**全局状态类型:**
+- `concat`: 拼接所有信息 (默认)
+- `mean`: 智能体观测的平均池化
+- `max`: 智能体观测的最大池化
+- `attention`: 基于注意力的聚合
 
-### 4. MSFS (Multi-agent Smart Factory Scheduling) - 智能制造流程调度环境
+### 奖励系统
 
-**环境描述**:  
-一个智能制造环境，机器人智能体需要协作处理订单，通过专业化奖励信号自然形成角色。
+- **时间惩罚**: 每步-0.3 (鼓励高效)
+- **距离改善**: 0.3 × 距离减少量
+- **箱子移动**: 1.0 (当箱子向目标移动时)
+- **合作奖励**: 1.5 × (推箱智能体数 - 1)
+- **目标完成**: 50.0 + 效率奖励(最高+15.0)
 
-**核心特点**:
-- 🏭 **制造流程**: 原材料 → 组装 → 包装三个工作站
-- 📦 **订单系统**: 标准订单和紧急订单两种类型
-- 🤖 **角色分化**: 智能体通过专业化形成采集者、组装者、包装者角色
-- ⚡ **动作冷却**: 移动和处理都有冷却时间限制
-- 📊 **利用率追踪**: 跟踪工作站和智能体的利用率
-- 👥 **智能体数量**: 6个机器人（可配置）
-- 🏢 **工作站**: 3个工作站（原材料、组装、包装）
+**奖励跨度**: ~80单位 (从随机探索到目标完成)
 
-**关键参数**:
-- 动作空间: 8个离散动作（移动到工作站、拾取、放置、处理等）
-- 观察空间: 24维向量（自身状态、全局信息、队友信息）
-- 全局状态维度: 42维
-- 最大步数: 200-300步（根据难度）
-- 订单生成: 动态生成，标准订单和紧急订单
+### 难度等级
 
-**文件**:
-- `env_msfs.py`: 基础环境实现
-- `env_msfs_ctde.py`: CTDE兼容版本
-- `core.py`: 核心类（Order、Workstation、Agent等）
-- `config.py`: 配置管理
-- `renderer.py`: 可视化渲染
+| 难度 | 网格大小 | 智能体 | 最大步数 | 目标奖励 | 成功概率 |
+|-----|---------|--------|---------|---------|---------|
+| debug | 5×5 | 2 | 50 | 20.0 | {1: 0.8, 2: 1.0} |
+| easy | 7×7 | 2 | 100 | 80.0 | {1: 0.7, 2: 0.9} |
+| normal | 7×7 | 2 | 100 | 50.0 | {1: 0.5, 2: 0.75, 3: 0.9} |
+| hard | 9×9 | 3 | 150 | 100.0 | {1: 0.3, 2: 0.6, 3: 0.85} |
 
----
-
-### 5. SMAC (StarCraft Multi-Agent Challenge) - 星际争霸多智能体挑战环境封装
-
-**环境描述**:  
-基于SMAC库的封装器，提供与其他环境统一的接口，用于星际争霸II的多智能体对战场景。
-
-**核心特点**:
-- ⚔️ **真实战斗**: 基于星际争霸II游戏引擎
-- 🗺️ **多种地图**: 支持8m、3s、2s3z、MMM、corridor等标准地图
-- 🎯 **异构单位**: 不同单位类型具有不同能力
-- 🔄 **统一接口**: 与DEM/HRG/MSFS环境接口一致
-- 🎮 **动作掩码**: 支持动作可用性检测
-- 👥 **智能体数量**: 3-20个（根据地图）
-- 🌟 **标准基准**: 业界广泛使用的MARL基准环境
-
-**关键参数**:
-- 动作空间: 约14个离散动作（根据地图变化）
-- 观察空间: 约80维向量（根据地图变化）
-- 最大步数: 根据地图预设
-- 需要StarCraft II和SMAC库
-
-**文件**:
-- `env_smac.py`: SMAC封装器实现
-- `env_smac_ctde.py`: CTDE兼容版本
-- `config.py`: 配置管理
-- `demo_wrapper.py`: 演示包装器
-
----
-
-## 🔧 统一接口设计
-
-所有环境都遵循以下统一接口规范：
-
-### 基础环境接口
+### 使用示例
 
 ```python
-# 重置环境
-observations = env.reset()
-# 返回: Dict[agent_id, np.ndarray]
+from Env.CM.env_cm import create_cm_env
+from Env.CM.env_cm_ctde import create_cm_ctde_env
 
-# 执行动作
-observations, rewards, dones, infos = env.step(actions)
-# 参数: actions: Dict[agent_id, int]
-# 返回: observations, rewards, dones, infos (所有都是字典格式)
+# 创建标准环境
+env = create_cm_env(difficulty="normal", render_mode="rgb_array")
 
-# 获取可用动作
-avail_actions = env.get_avail_actions(agent_id)
-
-# 获取环境信息
-env_info = env.get_env_info()
-
-# 关闭环境
-env.close()
-```
-
-### CTDE环境接口
-
-CTDE（集中式训练分布式执行）环境在基础接口之上增加了：
-
-```python
-# 获取全局状态
-global_state = env.get_global_state()
-# 返回: np.ndarray
-
-# 在info中包含全局状态
-obs, rewards, dones, infos = env.step(actions)
-global_state = infos['global_state']
-
-# 支持的全局状态类型
-# - "concat": 拼接所有智能体观察
-# - "mean": 平均池化
-# - "max": 最大池化
-# - "attention": 基于注意力机制的状态
-```
-
----
-
-## 📦 目录结构
-
-```
-Env/
-├── CM/                          # 协作搬运环境
-│   ├── env_cm.py               # 基础环境
-│   ├── env_cm_ctde.py          # CTDE版本
-│   ├── core.py                 # 核心类
-│   ├── config.py               # 配置
-│   ├── renderer.py             # 渲染器
-│   ├── test_env.py             # 测试文件
-│   └── README.md               # 详细文档
-│
-├── DEM/                         # 动态护送任务环境
-│   ├── env_dem.py              # 基础环境
-│   ├── env_dem_ctde.py         # CTDE版本
-│   ├── core.py                 # 核心类
-│   ├── config.py               # 配置
-│   ├── renderer.py             # 渲染器
-│   ├── test_env.py             # 测试文件
-│   └── README.md               # 详细文档
-│
-├── HRG/                         # 异构资源收集环境
-│   ├── env_hrg.py              # 基础环境
-│   ├── env_hrg_ctde.py         # CTDE版本
-│   ├── core.py                 # 核心类
-│   ├── config.py               # 配置
-│   ├── renderer.py             # 渲染器
-│   ├── test_env.py             # 测试文件
-│   └── README.md               # 详细文档
-│
-├── MSFS/                        # 智能制造调度环境
-│   ├── env_msfs.py             # 基础环境
-│   ├── env_msfs_ctde.py        # CTDE版本
-│   ├── core.py                 # 核心类
-│   ├── config.py               # 配置
-│   ├── renderer.py             # 渲染器
-│   ├── test_env.py             # 测试文件
-│   └── README.md               # 详细文档（待补充）
-│
-├── SMAC/                        # 星际争霸环境封装
-│   ├── env_smac.py             # SMAC封装器
-│   ├── env_smac_ctde.py        # CTDE版本
-│   ├── config.py               # 配置
-│   ├── test_env.py             # 测试文件
-│   └── README.md               # 详细文档
-│
-├── doc/                         # 环境文档和教程
-│   ├── CM简介.md
-│   ├── DEM简介.md
-│   ├── HRG简介.md
-│   ├── MSFS简介.md
-│   └── requirements.txt
-│
-├── CM_Tutorial.ipynb           # CM环境教程
-├── DEM_environment_tutorial.ipynb  # DEM环境教程
-├── HRG_Tutorial.ipynb          # HRG环境教程
-├── MSFS_environment_tutorial.ipynb # MSFS环境教程
-├── SMAC_Wrapper_Tutorial.ipynb # SMAC封装器教程
-│
-├── verify_dem_environment.py   # DEM环境验证脚本
-├── verify_hrg_environment.py   # HRG环境验证脚本
-├── verify_msfs_environment.py  # MSFS环境验证脚本
-├── run_dem_validation.py       # DEM验证运行
-├── run_hrg_validation.py       # HRG验证运行
-├── run_msfs_validation.py      # MSFS验证运行
-│
-└── README_CN.md                # 本文件（中文版）
-```
-
----
-
-## 🎓 快速开始
-
-### 1. CM环境示例
-
-```python
-from Env.CM import create_cm_env
-
-# 创建环境
-env = create_cm_env(difficulty="easy")
+# 创建CTDE环境
+ctde_env = create_cm_ctde_env(
+    difficulty="normal_ctde", 
+    global_state_type="concat"
+)
 
 # 重置环境
-observations = env.reset()
+obs = env.reset()
 
-# 运行一个回合
-for step in range(100):
-    actions = {agent_id: env.action_space.sample() 
-               for agent_id in env.agent_ids}
-    obs, rewards, dones, infos = env.step(actions)
-    
-    if any(dones.values()):
-        break
+# 执行步骤
+actions = {agent_id: env.get_avail_actions(agent_id)[0] 
+           for agent_id in env.agent_ids}
+obs, rewards, dones, info = env.step(actions)
 
-env.close()
+# 获取全局状态 (仅CTDE)
+global_state = ctde_env.get_global_state()
 ```
 
-### 2. DEM环境示例
+---
+
+## 2. DEM (动态护送任务) 环境
+
+### 任务描述
+
+特种部队智能体必须护送VIP穿越危险地带,同时动态形成角色(护卫、先锋、狙击手)应对各种威胁。VIP使用智能寻路自主移动,智能体必须保护它并清除威胁。
+
+### 核心特性
+- **动态角色形成**: 智能体通过奖励塑造自然形成角色
+- **智能VIP**: 具有障碍物规避的自主寻路
+- **多样威胁**: 冲锋者(快速,近战)和射手(远程,固定)
+- **地形类型**: 河流(不可通过)、森林(伤害减免)
+
+### 动作空间 (每个智能体10个离散动作)
+
+| 动作ID | 名称 | 描述 |
+|-------|------|------|
+| 0 | 等待 | 无动作 |
+| 1-4 | 移动 | 向上/下/左/右移动 |
+| 5 | 攻击 | 攻击范围内最近的威胁 |
+| 6 | 保护VIP | 保护VIP(减少受到的伤害) |
+| 7 | 威胁警告 | 发送威胁警告消息 |
+| 8 | 全部清除 | 发送全部清除消息 |
+| 9 | 观察 | 观察环境 |
+
+### 观测空间 (59维)
+
+**自身状态 (8维):**
+- 位置(2), 生命值(1), 攻击冷却(1)
+- 保护状态(1), 到VIP距离(1), 到目标距离(1), 在森林中(1)
+
+**VIP状态 (6维):**
+- 可见(1), 生命值(1), 相对位置(2), 受攻击(1), 相邻(1)
+
+**队友 (12维):**
+- 最多2个队友 × 6维 (相对位置, 生命值, VIP相邻, 保护中, 冷却)
+
+**威胁 (25维):**
+- 最多5个威胁 × 5维 (类型, 相对位置, 生命值, 冷却)
+
+**通信 (6维):**
+- 3条最近消息 × 2维 (类型, 年龄)
+
+**额外信息 (2维):**
+- 归一化步数, 常数偏置
+
+### 奖励系统
+
+**主要奖励:**
+- VIP到达目标: +50.0
+- VIP死亡: -30.0
+- VIP前进: 每格+0.2
+- 击杀威胁: +3.0
+- 远程击杀(≥6格): +1.0
+
+**角色涌现奖励:**
+- 护卫在VIP附近: +0.05
+- 身体阻挡(伤害减免): +0.5
+- 先锋在VIP前方: +0.05
+- 良好分散(平均距离2-5): +0.02
+
+**惩罚:**
+- VIP受伤: 每点生命值-0.1
+- 智能体死亡: -3.0
+- 碰撞: -0.05
+- 无效动作: -0.1
+
+### 难度等级
+
+| 难度 | 网格大小 | VIP生命值 | 智能体生命值 | 威胁 | 生成间隔 |
+|-----|---------|----------|------------|------|---------|
+| easy | 10×10 | 80 | 60 | 最多3个 | 10-12步 |
+| normal | 12×12 | 60 | 50 | 最多5个 | 6-8步 |
+| hard | 12×12 | 40 | 40 | 最多8个 | 4-6步 |
+
+### 使用示例
 
 ```python
-from Env.DEM import create_dem_env
+from Env.DEM.env_dem import DEMEnv
+from Env.DEM.env_dem_ctde import DEMCTDEEnv
+from Env.DEM.config import DEMConfig
 
-# 创建环境
-env = create_dem_env(difficulty="normal")
+# 使用自定义配置创建环境
+config = DEMConfig(difficulty="normal")
+env = DEMEnv(config)
 
-# 重置环境
-observations = env.reset()
+# 或使用CTDE包装器
+ctde_env = DEMCTDEEnv(difficulty="normal")
 
-# 运行一个回合
-for step in range(200):
-    actions = {agent_id: env.action_space.sample() 
-               for agent_id in env.agent_ids}
-    obs, rewards, dones, infos = env.step(actions)
-    
-    if any(dones.values()):
-        break
-
-env.close()
+# 重置和步进
+obs = env.reset()
+actions = {agent_id: 0 for agent_id in env.game_state.agents.keys()}
+obs, rewards, dones, info = env.step(actions)
 ```
 
-### 3. HRG环境示例
+---
+
+## 3. HRG (异构资源采集) 环境
+
+### 任务描述
+
+具有不同角色的智能体(侦察兵、工人、运输兵)协作收集资源(金矿、木材)并运回基地。每种智能体类型具有独特能力:
+- **侦察兵**: 高视野,快速移动,不能采集
+- **工人**: 可采集资源,中等容量
+- **运输兵**: 高携带容量,快速移动
+
+### 核心特性
+- **异构智能体**: 3种不同智能体类型,各有专长
+- **资源类型**: 金矿(高价值,聚集)和木材(低价值,分散)
+- **基于角色的合作**: 高效资源收集需要协调
+
+### 动作空间 (每个智能体8个离散动作)
+
+| 动作ID | 名称 | 描述 |
+|-------|------|------|
+| 0-3 | 移动 | 向北/南/西/东移动 |
+| 4 | 采集 | 在当前位置采集资源(仅工人) |
+| 5 | 转移 | 向相邻智能体转移资源 |
+| 6 | 存放 | 在基地存放资源 |
+| 7 | 等待 | 等待(无动作) |
+
+### 观测空间 (60维 - 已优化)
+
+**智能体自身状态 (10维):**
+- 位置(2), 角色(独热,3), 库存(2), 能量(1), 冷却(1), 到基地距离(1), 剩余时间(1)
+
+**可见实体 (40维):**
+- 视野范围内最多6个实体
+- 每个实体: 相对位置(2) + 类型信息(3) = 5维
+
+**通信 (10维):**
+- 3条最近消息 × ~3维
+
+### 全局状态 (120维 - 已优化)
+
+- 智能体状态: 6个智能体 × 12维 = 72
+- 资源摘要: 24维(按象限聚类)
+- 全局统计: 24维
+
+### 奖励系统
+
+**资源价值:**
+- 金矿: 每单位10.0
+- 木材: 每单位2.0
+
+**动作奖励:**
+- 采集: 资源价值的10%
+- 转移: 资源价值的5%
+- 存放: 资源价值的50%
+
+**团队奖励:**
+- 时间惩罚: 每步-0.01
+- 资源多样性奖励: 金矿+0.1,木材+0.05
+
+### 难度等级
+
+| 难度 | 网格大小 | 最大步数 | 金矿 | 木材 | 障碍物 | 智能体 |
+|-----|---------|---------|------|------|-------|--------|
+| easy | 8×8 | 300 | 2 | 15 | 0 | 6 (2S, 3W, 1T) |
+| normal | 10×10 | 200 | 3 | 10 | 10 | 6 (2S, 3W, 1T) |
+| hard | 12×12 | 150 | 4 | 8 | 20 | 6 (2S, 3W, 1T) |
+| ultra_fast | 6×6 | 80 | 1 | 4 | 2 | 2 (1W, 1T) |
+
+S=侦察兵, W=工人, T=运输兵
+
+### 使用示例
 
 ```python
-from Env.HRG import create_hrg_env
+from Env.HRG.env_hrg import create_hrg_env
+from Env.HRG.env_hrg_ctde import create_hrg_ctde_env
 
 # 创建环境
 env = create_hrg_env(difficulty="normal")
 
-# 重置环境
-observations = env.reset()
+# 或使用超快版本进行训练
+fast_env = create_hrg_env(difficulty="ultra_fast")
 
-# 运行一个回合
-for step in range(200):
-    actions = {agent_id: env.action_space.sample() 
-               for agent_id in env.agent_ids}
-    obs, rewards, dones, infos = env.step(actions)
-    
-    if any(dones.values()):
-        break
+# CTDE版本
+ctde_env = create_hrg_ctde_env(difficulty="normal")
 
-env.close()
+# 重置和步进
+obs = env.reset()
+global_state = ctde_env.get_global_state()
 ```
 
-### 4. MSFS环境示例
+---
+
+## 4. MSFS (智能制造流程调度) 环境
+
+### 任务描述
+
+机器人必须协作处理订单,经过3阶段制造流程(原料 → 组装 → 包装)。智能体通过奖励塑造自然形成专业化角色,充当收集者、处理者或包装者。
+
+### 核心特性
+- **角色涌现**: 智能体通过在同一工位连续处理而专业化
+- **订单类型**: 简单(快速,低价值)和复杂(慢速,高价值)
+- **3阶段流水线**: 每个订单必须通过所有三个工位
+- **动态队列管理**: 智能体必须平衡工作负载
+
+### 动作空间 (每个智能体8个离散动作)
+
+| 动作ID | 名称 | 描述 |
+|-------|------|------|
+| 0 | 等待 | 无动作 |
+| 1-3 | 移动到工位 | 移动到原料/组装/包装工位 |
+| 4 | 拉取订单 | 从队列拉取订单(仅原料工位) |
+| 5 | 开始处理 | 开始或继续处理 |
+| 6 | 完成阶段 | 完成当前阶段,移至下一阶段 |
+| 7 | 交付订单 | 交付完成的订单(仅包装工位) |
+
+### 观测空间 (24维)
+
+**自身状态 (10维):**
+- 当前工位(独热,3)
+- 移动冷却(1), 携带状态(1)
+- 订单类型和阶段信息(5)
+
+**全局信息 (7维):**
+- 队列长度(3), 订单计数(2), 时间(2)
+
+**队友信息 (7维):**
+- 队友工位(独热,3)
+- 忙碌状态(1), 携带/处理信息(3)
+
+### 全局状态 (42维)
+
+- 智能体状态: 2个智能体 × 8维 = 16
+- 工位状态: 3个工位 × 6维 = 18
+- 全局统计: 8维
+
+### 奖励系统 (增强探索版)
+
+**基于动作的奖励 (即时):**
+- 向目标移动: +0.1
+- 拾取材料: +0.2
+- 开始处理: +0.3
+- 完成阶段: +0.5
+- 交付订单: +1.0
+
+**进度奖励 (里程碑式):**
+- 原料完成: +1.0
+- 组装完成: +2.0
+- 包装完成: +3.0
+- 订单交付: +5.0
+- 流畅工作流奖励: +0.5
+
+**合作奖励:**
+- 成功交接: +0.8
+- 工位就绪: +0.4
+- 并发处理: +0.6
+- 负载均衡: +0.3
+
+**角色涌现奖励:**
+- 收集者/处理者/包装者专注: +0.2/0.3/0.4
+- 坚持角色: +0.1
+- 自适应切换: +0.5
+
+**惩罚 (轻量):**
+- 无效动作: -0.1
+
+### 难度等级
+
+| 难度 | 最大步数 | 订单价值 | 奖励规模 | 惩罚 |
+|-----|---------|---------|---------|------|
+| easy | 60 | 简单:7.0, 复杂:12.0 | 1.5× | 最小 |
+| normal | 50 | 简单:5.0, 复杂:10.0 | 1.0× | 标准 |
+| hard | 40 | 简单:4.0, 复杂:8.0 | 0.7× | 较高 |
+
+### 使用示例
 
 ```python
-from Env.MSFS import create_msfs_env
+from Env.MSFS.env_msfs import create_msfs_env
+from Env.MSFS.env_msfs_ctde import create_msfs_ctde_env
 
 # 创建环境
 env = create_msfs_env(difficulty="normal")
 
-# 重置环境
-observations = env.reset()
+# CTDE版本
+ctde_env = create_msfs_ctde_env(difficulty="normal")
 
-# 运行一个回合
-for step in range(200):
-    actions = {agent_id: env.action_space.sample() 
-               for agent_id in env.agent_ids}
-    obs, rewards, dones, infos = env.step(actions)
-    
-    if any(dones.values()):
-        break
-
-env.close()
+# 重置和步进
+obs = env.reset()
+actions = {agent_id: 0 for agent_id in env.game_state.agents.keys()}
+obs, rewards, dones, info = env.step(actions)
 ```
 
-### 5. CTDE环境示例（适用于QMIX等算法）
+---
+
+## 5. SMAC (星际争霸多智能体挑战) 包装器
+
+### 任务描述
+
+StarCraft多智能体挑战环境的包装器,提供与我们MARL框架兼容的标准化接口。智能体控制星际争霸II中的单位击败敌军。
+
+### 核心特性
+- **官方SMAC地图**: 支持所有官方SMAC场景
+- **标准化接口**: 与QMIX、VDN等CTDE算法兼容
+- **多种场景**: 从简单(3m, 8m)到复杂(MMM, corridor)
+
+### 地图类别
+
+**同质单位:**
+- `2m`, `3m`, `4m`, `5m`, `8m`, `10m` - 机枪兵单位
+- `2s`, `3s`, `4s`, `5s` - 追猎者单位
+
+**异质单位:**
+- `2s3z`, `3s5z`, `1c3s5z` - 混合单位类型
+- `MMM`, `MMM2` - 机枪兵、掠夺者、医疗艇
+
+**非对称场景:**
+- `2m_vs_1z`, `3s_vs_5z`, `2c_vs_64zg` - 不平衡战斗
+
+**复杂场景:**
+- `corridor` - 狭窄通道战斗
+- `6h_vs_8z` - 地狱火兵对跳虫
+
+### 动作空间
+
+- 动作数量因场景而异(通常6-20个)
+- 包括: 无操作、停止、移动方向、攻击敌方单位
+
+### 观测空间
+
+- 每个智能体的局部观测(因场景而异,通常40-100维)
+- 包括: 己方单位特征、敌方特征、友军特征、地形
+
+### 全局状态
+
+- 完整游戏状态,包括所有单位位置、生命值、护盾等
+- 维度因场景而异(通常100-300维)
+
+### 使用示例
 
 ```python
-from Env.CM import create_cm_ctde_env
+from Env.SMAC.env_smac import SMACEnv
+from Env.SMAC.env_smac_ctde import SMACCTDEEnv
+
+# 创建标准环境
+env = SMACEnv(map_name="8m")
 
 # 创建CTDE环境
-env = create_cm_ctde_env(
-    difficulty="normal_ctde",
-    global_state_type="concat"
-)
+ctde_env = SMACCTDEEnv(map_name="8m")
 
-# 重置环境并获取全局状态
+# 重置和步进
+obs = env.reset()
+actions = {agent_id: 0 for agent_id in env.agent_ids}
+obs, rewards, dones, info = env.step(actions)
+
+# 获取全局状态
+global_state = ctde_env.get_global_state()
+```
+
+**注意**: SMAC需要安装StarCraft II。请参阅 [SMAC README](./SMAC/README.md) 了解安装说明。
+
+---
+
+## 安装
+
+### 基本要求
+
+```bash
+# Ubuntu 24.04, Python 3.8+
+pip install numpy gymnasium matplotlib
+```
+
+### 可选要求
+
+对于SMAC环境:
+```bash
+pip install -r Env/doc/requirements_with_smac.txt
+```
+
+完整依赖列表请参见 [requirements.txt](./doc/requirements.txt)。
+
+---
+
+## 环境兼容性
+
+所有环境兼容:
+- **QMIX**: 集中式价值分解
+- **VDN**: 价值分解网络
+- **MADDPG**: 多智能体DDPG
+- **其他CTDE算法**: 通过标准化接口
+
+### 标准接口
+
+所有环境提供:
+```python
+# 重置
 observations = env.reset()
-global_state = env.get_global_state()
 
-# 运行一个回合
-for step in range(100):
-    actions = {agent_id: env.action_space.sample() 
-               for agent_id in env.agent_ids}
-    obs, rewards, dones, infos = env.step(actions)
-    
-    # 获取全局状态
-    global_state = infos['global_state']
-    
-    if any(dones.values()):
-        break
+# 步进
+observations, rewards, dones, info = env.step(actions)
 
-env.close()
+# 获取环境信息
+env_info = env.get_env_info()
+# 返回: n_agents, agent_ids, n_actions, obs_dims, act_dims, episode_limit
+
+# 获取可用动作 (用于动作掩码)
+avail_actions = env.get_avail_actions(agent_id)
+
+# 获取全局状态 (CTDE环境)
+global_state = ctde_env.get_global_state()
 ```
 
 ---
 
-## 🔬 环境对比
+## 教程
 
-| 环境 | 智能体数 | 协作难度 | 观察维度 | 动作数 | 是否异构 | 通信支持 | 主要挑战 |
-|------|---------|---------|---------|--------|---------|---------|---------|
-| **CM** | 2-4 | ⭐⭐ | 10-16 | 5 | 否 | 否 | 空间协调 |
-| **DEM** | 3 | ⭐⭐⭐⭐ | ~60 | 10 | 否 | 是 | 角色涌现、动态威胁 |
-| **HRG** | 6 | ⭐⭐⭐ | 80 | 8 | 是 | 可选 | 异构协作、资源优化 |
-| **MSFS** | 6 | ⭐⭐⭐ | 24 | 8 | 否 | 否 | 任务分配、时序优化 |
-| **SMAC** | 3-20 | ⭐⭐⭐⭐⭐ | ~80 | ~14 | 是 | 否 | 战斗策略、微操控制 |
-
----
-
-## 📊 支持的MARL算法
-
-所有环境都兼容以下主流MARL算法：
-
-### CTDE类算法
-- **QMIX**: Q-Mixing Networks
-- **VDN**: Value Decomposition Networks
-- **QTRAN**: Q-Transformation
-- **WQMIX**: Weighted QMIX
-
-### 独立学习算法
-- **IQL**: Independent Q-Learning
-- **A3C**: Asynchronous Advantage Actor-Critic
-- **PPO**: Proximal Policy Optimization
-
-### 通信算法
-- **CommNet**: Communication Networks
-- **TarMAC**: Targeted Multi-Agent Communication
-- **IC3Net**: Individual-Collective-Learning Communication
+为每个环境提供了交互式Jupyter教程:
+- [CM环境教程](./CM_environment_tutorial.ipynb)
+- [DEM环境教程](./DEM_environment_tutorial.ipynb)
+- [HRG环境教程](./HRG_environment_tutorial.ipynb)
+- [MSFS环境教程](./MSFS_environment_tutorial.ipynb)
+- [SMAC包装器教程](./SMAC_environment_tutorial.ipynb)
 
 ---
 
-## 🧪 测试和验证
+## 引用
 
-每个环境都提供了完整的测试套件：
+如果您在研究中使用这些环境,请引用:
 
-```bash
-# CM环境测试
-cd Env/CM
-python test_env.py
-
-# DEM环境测试
-cd Env/DEM
-python test_env.py
-
-# HRG环境测试
-cd Env/HRG
-python test_env.py
-
-# MSFS环境测试
-cd Env/MSFS
-python test_env.py
-
-# SMAC环境测试
-cd Env/SMAC
-python test_env.py
-```
-
-运行完整验证脚本：
-
-```bash
-# 验证所有环境
-python verify_dem_environment.py
-python verify_hrg_environment.py
-python verify_msfs_environment.py
+```bibtex
+@misc{marl_envs_2024,
+  title={Multi-Agent Reinforcement Learning Environments},
+  author={Your Name},
+  year={2024},
+  url={https://github.com/yourusername/MARL}
+}
 ```
 
 ---
 
-## 📚 教程和文档
+## 许可证
 
-每个环境都提供了详细的Jupyter教程：
-
-- **CM_Tutorial.ipynb**: 协作搬运环境完整教程
-- **DEM_environment_tutorial.ipynb**: 动态护送任务环境教程
-- **HRG_Tutorial.ipynb**: 异构资源收集环境教程
-- **MSFS_environment_tutorial.ipynb**: 智能制造环境教程
-- **SMAC_Wrapper_Tutorial.ipynb**: SMAC封装器使用教程
-
-详细文档位于各环境的README.md文件中。
+本项目采用MIT许可证 - 详情请参见LICENSE文件。
 
 ---
 
-## ⚙️ 环境配置指南
+## 联系方式
 
-### 难度级别
-
-所有环境都支持多个预定义难度级别：
-
-- **easy**: 适合初始训练和调试
-- **normal**: 标准评估配置
-- **hard**: 挑战性配置，用于测试算法极限
-
-### 自定义配置
-
-每个环境都支持自定义配置：
-
-```python
-from Env.CM.config import CMConfig
-from Env.CM.env_cm import CooperativeMovingEnv
-
-# 创建自定义配置
-config = CMConfig(
-    grid_size=9,
-    n_agents=4,
-    max_steps=120,
-    cooperation_reward=0.03
-)
-
-# 使用自定义配置
-env = CooperativeMovingEnv(config)
-```
-
----
-
-## 🎨 可视化支持
-
-所有环境都提供了可视化功能：
-
-### 文本渲染
-
-```python
-env = create_cm_env(render_mode="human")
-env.reset()
-env.render()  # 在终端显示文本渲染
-```
-
-### 图形渲染
-
-```python
-env = create_dem_env(render_mode="rgb_array")
-env.reset()
-
-# 使用Pygame实时可视化
-for step in range(100):
-    actions = get_actions()
-    env.step(actions)
-    # 自动渲染
-```
-
-### 保存渲染图像
-
-```python
-from Env.HRG.renderer import MatplotlibRenderer
-
-renderer = MatplotlibRenderer(grid_size=10)
-renderer.render(env.game_state, save_path="screenshot.png")
-```
-
----
-
-## 🔄 接口一致性保证
-
-所有环境严格遵循以下接口规范：
-
-1. **reset()方法**: 返回观察字典
-2. **step()方法**: 返回(observations, rewards, dones, infos)四元组
-3. **观察格式**: Dict[agent_id, np.ndarray]
-4. **奖励格式**: Dict[agent_id, float]
-5. **完成标志**: Dict[agent_id, bool]
-6. **信息字典**: Dict包含全局信息
-
-这确保了算法代码可以在不同环境间无缝切换。
-
----
-
-## 🤝 贡献指南
-
-欢迎为环境集合做出贡献！
-
-### 添加新环境
-
-新环境应该：
-1. 遵循统一接口规范
-2. 提供基础版本和CTDE版本
-3. 包含完整的配置系统
-4. 提供测试套件
-5. 编写详细文档和教程
-
-### 代码规范
-
-- 遵循PEP 8代码风格
-- 添加类型注解
-- 编写详细的文档字符串
-- 提供单元测试
-
----
-
-## 📄 许可证
-
-本项目采用MIT许可证。
-
----
-
-## 🙏 致谢
-
-感谢多智能体强化学习研究社区的支持和贡献。
-
----
-
-## 📧 联系方式
-
-如有问题或建议，请通过GitHub Issues提交。
-
----
-
-**版本**: v1.0.0  
-**最后更新**: 2025年  
-**维护者**: Shuwei Sun
+如有问题、议题或贡献,请在GitHub上提交issue或联系维护者。

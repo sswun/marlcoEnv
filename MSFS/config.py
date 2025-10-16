@@ -26,9 +26,41 @@ class MSFSConfig:
     # Agent settings
     move_cooldown_time: int = 1
 
-    # Reward settings
-    step_penalty: float = 0.01
-    idle_penalty: float = 0.005
+    # Enhanced reward settings for better exploration
+    # Action-based rewards (immediate feedback)
+    move_toward_target: float = 0.1
+    pickup_material: float = 0.2
+    start_processing: float = 0.3
+    complete_stage: float = 0.5
+    deliver_order: float = 1.0
+
+    # Progress rewards (milestone-based)
+    raw_completion: float = 1.0
+    assembly_completion: float = 2.0
+    packaging_completion: float = 3.0
+    order_delivery: float = 5.0
+    smooth_transition: float = 0.5
+    no_queue_bonus: float = 0.3
+
+    # Cooperation rewards (team-based)
+    successful_handoff: float = 0.8
+    workstation_ready: float = 0.4
+    concurrent_processing: float = 0.6
+    balanced_workload: float = 0.3
+
+    # Role emergence rewards
+    collector_focus: float = 0.2
+    processor_focus: float = 0.3
+    packager_focus: float = 0.4
+    stick_to_role: float = 0.1
+    switch_when_needed: float = 0.5
+
+    # Reduced penalties for exploration
+    step_penalty: float = 0.0  # Removed time pressure
+    idle_penalty: float = 0.0   # Allow strategic waiting
+    invalid_action_penalty: float = -0.1  # Much lighter penalty
+
+    # Legacy settings (kept for compatibility)
     specialization_reward: float = 0.5
     finishing_reward: float = 1.0
     specialization_threshold: int = 3  # Consecutive processes for specialization reward
@@ -63,14 +95,23 @@ class MSFSConfig:
             raise ValueError("queue_limit must be positive")
         if self.simple_order_value <= 0 or self.complex_order_value <= 0:
             raise ValueError("order values must be positive")
-        if self.step_penalty < 0 or self.idle_penalty < 0:
-            raise ValueError("penalties must be non-negative")
         if self.specialization_reward < 0 or self.finishing_reward < 0:
             raise ValueError("rewards must be non-negative")
         if self.specialization_threshold <= 0:
             raise ValueError("specialization_threshold must be positive")
         if self.finishing_phase_start < 0:
             raise ValueError("finishing_phase_start must be non-negative")
+        # Validate new reward parameters are non-negative (except penalties)
+        reward_attrs = [
+            'move_toward_target', 'pickup_material', 'start_processing', 'complete_stage', 'deliver_order',
+            'raw_completion', 'assembly_completion', 'packaging_completion', 'order_delivery',
+            'smooth_transition', 'no_queue_bonus', 'successful_handoff', 'workstation_ready',
+            'concurrent_processing', 'balanced_workload', 'collector_focus', 'processor_focus',
+            'packager_focus', 'stick_to_role', 'switch_when_needed'
+        ]
+        for attr in reward_attrs:
+            if getattr(self, attr) < 0:
+                raise ValueError(f"{attr} must be non-negative")
         # Allow finishing_phase_start to be >= max_steps, just adjust during runtime
         if self.difficulty not in ["easy", "normal", "hard"]:
             raise ValueError("difficulty must be one of 'easy', 'normal', 'hard'")
@@ -87,12 +128,37 @@ class MSFSConfig:
             'simple_order_value': self.simple_order_value,
             'complex_order_value': self.complex_order_value,
             'move_cooldown_time': self.move_cooldown_time,
+            # Enhanced reward settings
+            'move_toward_target': self.move_toward_target,
+            'pickup_material': self.pickup_material,
+            'start_processing': self.start_processing,
+            'complete_stage': self.complete_stage,
+            'deliver_order': self.deliver_order,
+            'raw_completion': self.raw_completion,
+            'assembly_completion': self.assembly_completion,
+            'packaging_completion': self.packaging_completion,
+            'order_delivery': self.order_delivery,
+            'smooth_transition': self.smooth_transition,
+            'no_queue_bonus': self.no_queue_bonus,
+            'successful_handoff': self.successful_handoff,
+            'workstation_ready': self.workstation_ready,
+            'concurrent_processing': self.concurrent_processing,
+            'balanced_workload': self.balanced_workload,
+            'collector_focus': self.collector_focus,
+            'processor_focus': self.processor_focus,
+            'packager_focus': self.packager_focus,
+            'stick_to_role': self.stick_to_role,
+            'switch_when_needed': self.switch_when_needed,
+            # Penalties
             'step_penalty': self.step_penalty,
             'idle_penalty': self.idle_penalty,
+            'invalid_action_penalty': self.invalid_action_penalty,
+            # Legacy settings
             'specialization_reward': self.specialization_reward,
             'finishing_reward': self.finishing_reward,
             'specialization_threshold': self.specialization_threshold,
             'finishing_phase_start': self.finishing_phase_start,
+            # Other settings
             'render_mode': self.render_mode,
             'render_fps': self.render_fps,
             'render_grid_size': self.render_grid_size,
@@ -112,14 +178,31 @@ class MSFSPresetConfigs:
 
     @staticmethod
     def easy() -> MSFSConfig:
-        """Easy configuration for initial training"""
+        """Easy configuration for initial training with enhanced exploration rewards"""
         return MSFSConfig(
             max_steps=60,
             num_agents=2,
             simple_order_value=7.0,  # Higher rewards
             complex_order_value=12.0,
-            step_penalty=0.005,  # Lower time penalty
-            idle_penalty=0.002,
+            # Enhanced exploration rewards
+            move_toward_target=0.15,  # Higher reward for moving correctly
+            pickup_material=0.3,
+            start_processing=0.4,
+            complete_stage=0.7,
+            deliver_order=1.5,
+            raw_completion=1.5,
+            assembly_completion=2.5,
+            packaging_completion=3.5,
+            order_delivery=7.0,  # High reward for completion
+            successful_handoff=1.0,
+            collector_focus=0.3,
+            processor_focus=0.4,
+            packager_focus=0.5,
+            # Reduced penalties
+            step_penalty=0.0,
+            idle_penalty=0.0,
+            invalid_action_penalty=-0.05,  # Very light penalty
+            # Legacy settings
             specialization_reward=1.0,  # Higher role rewards
             finishing_reward=1.5,
             specialization_threshold=2,  # Easier to specialize

@@ -252,11 +252,11 @@ class HRGEnv:
             agent_id: spaces.Discrete(8) for agent_id in self.agent_ids
         }
 
-        # Observation space: approximately 70-80 dimensions per agent
+        # Observation space: reduced to 60 dimensions per agent for performance
         self.observation_spaces = {
             agent_id: spaces.Box(
                 low=-np.inf, high=np.inf,
-                shape=(80,), dtype=np.float32
+                shape=(60,), dtype=np.float32
             ) for agent_id in self.agent_ids
         }
 
@@ -264,7 +264,7 @@ class HRGEnv:
         self.n_agents = len(self.agent_ids)
         self.agent_ids = sorted(self.agent_ids)
         self.act_dims = {agent_id: 8 for agent_id in self.agent_ids}
-        self.obs_dims = {agent_id: 80 for agent_id in self.agent_ids}
+        self.obs_dims = {agent_id: 60 for agent_id in self.agent_ids}
 
     def _setup_renderer(self):
         """Setup renderer based on render mode"""
@@ -509,21 +509,19 @@ class HRGEnv:
         return reward
 
     def _get_observation(self, agent_id: str) -> np.ndarray:
-        """Get observation for a specific agent"""
+        """Get observation for a specific agent - optimized version"""
         agent = self.agents[agent_id]
-        obs = np.zeros(80, dtype=np.float32)
+        obs = np.zeros(60, dtype=np.float32)  # Reduced from 80 to 60 dimensions
         idx = 0
 
-        # Agent self state (10 dimensions)
+        # Agent self state (10 dimensions) - same as before
         obs[idx] = agent.position.x / self.config.grid_size
         idx += 1
         obs[idx] = agent.position.y / self.config.grid_size
         idx += 1
 
         # Role one-hot encoding (3 dimensions)
-        role_one_hot = [0, 0, 0]
-        role_one_hot[agent.type.value] = 1
-        obs[idx:idx+3] = role_one_hot
+        obs[idx + agent.type.value] = 1.0  # Direct indexing instead of list creation
         idx += 3
 
         # Inventory (2 dimensions)
@@ -547,61 +545,80 @@ class HRGEnv:
         obs[idx] = 1.0 - (self.game_state.current_step / self.game_state.max_steps)
         idx += 1
 
-        # Visible entities (up to 50 dimensions)
-        visible_positions = self.game_state.get_visible_positions(agent)
-        max_entities = 10  # Maximum entities to observe
+        # Optimized visible entities detection (40 dimensions total)
+        # Use a simpler, faster approach: limit to immediate vicinity
+        vision_range = min(agent.config.vision_range, 3)  # Cap vision range for performance
+        max_entities = 6  # Reduced from 10 to 6 entities
 
+        # Pre-compute bounds to avoid repeated calculations
+        min_x = max(0, agent.position.x - vision_range)
+        max_x = min(self.config.grid_size, agent.position.x + vision_range + 1)
+        min_y = max(0, agent.position.y - vision_range)
+        max_y = min(self.config.grid_size, agent.position.y + vision_range + 1)
+
+        # Quick scan for nearby entities
         entity_count = 0
-        for pos in visible_positions[:max_entities]:
+        for dx in range(-vision_range, vision_range + 1):
             if entity_count >= max_entities:
                 break
-
-            # Check for agents
-            for other_agent in self.game_state.get_agents_at(pos):
-                if other_agent.id != agent_id:
-                    # Relative position (2 dimensions)
-                    obs[idx] = (pos.x - agent.position.x) / agent.config.vision_range
-                    idx += 1
-                    obs[idx] = (pos.y - agent.position.y) / agent.config.vision_range
-                    idx += 1
-
-                    # Entity type (3 dimensions for agent types)
-                    agent_type_one_hot = [0, 0, 0]
-                    agent_type_one_hot[other_agent.type.value] = 1
-                    obs[idx:idx+3] = agent_type_one_hot
-                    idx += 3
-
-                    entity_count += 1
+            for dy in range(-vision_range, vision_range + 1):
+                if entity_count >= max_entities:
                     break
 
-            # Check for resources
-            resource = self.game_state.get_resource_at(pos)
-            if resource and entity_count < max_entities:
-                # Relative position (2 dimensions)
-                obs[idx] = (pos.x - agent.position.x) / agent.config.vision_range
-                idx += 1
-                obs[idx] = (pos.y - agent.position.y) / agent.config.vision_range
-                idx += 1
+                check_x = agent.position.x + dx
+                check_y = agent.position.y + dy
 
-                # Resource type (2 dimensions)
-                resource_type_one_hot = [0, 0]
-                resource_type_one_hot[resource.resource_type.value] = 1
-                obs[idx:idx+2] = resource_type_one_hot
-                idx += 2
+                # Skip if out of bounds
+                if check_x < min_x or check_x >= max_x or check_y < min_y or check_y >= max_y:
+                    continue
 
-                # Resource quantity (1 dimension)
-                obs[idx] = resource.remaining_quantity / 5.0
-                idx += 1
+                check_pos = Position(check_x, check_y)
 
-                entity_count += 1
+                # Check for other agents first (usually more important)
+                for other_agent in self.agents.values():
+                    if other_agent.id != agent_id and other_agent.position == check_pos:
+                        # Relative position (2 dimensions)
+                        obs[idx] = dx / vision_range
+                        idx += 1
+                        obs[idx] = dy / vision_range
+                        idx += 1
 
-        # Pad remaining entity observations
-        padding = max_entities * 5 - (idx - 10)  # 5 dimensions per entity, after first 10 dims
-        obs[idx:idx+padding] = 0.0
-        idx += padding
+                        # Agent type (3 dimensions)
+                        obs[idx + other_agent.type.value] = 1.0
+                        idx += 3
 
-        # Recent messages (10 dimensions)
-        message_dim = 3  # Simplified message encoding
+                        entity_count += 1
+                        break
+                else:
+                    # Check for resources if no agent found
+                    for resource in self.game_state.resources:
+                        if (resource.is_active and resource.position == check_pos):
+                            # Relative position (2 dimensions)
+                            obs[idx] = dx / vision_range
+                            idx += 1
+                            obs[idx] = dy / vision_range
+                            idx += 1
+
+                            # Resource type (2 dimensions)
+                            obs[idx + resource.resource_type.value] = 1.0
+                            idx += 2
+
+                            # Resource quantity (1 dimension)
+                            obs[idx] = resource.remaining_quantity / 5.0
+                            idx += 1
+
+                            entity_count += 1
+                            break
+
+        # Pad remaining entity observations (5 dimensions per entity expected)
+        expected_dims = 10 + max_entities * 5  # First 10 + entities
+        padding = expected_dims - idx
+        if padding > 0:
+            obs[idx:idx+padding] = 0.0
+            idx += padding
+
+        # Simplified messages (10 dimensions) - keep as is
+        message_dim = 3
         recent_messages = self.game_state.message_history[-message_dim:]
         for i, msg in enumerate(recent_messages):
             if i < message_dim:
@@ -655,60 +672,77 @@ class HRGEnv:
         return avail_actions
 
     def get_global_state(self) -> np.ndarray:
-        """Get global state representation (for CTDE algorithms)"""
-        global_state = np.zeros(200, dtype=np.float32)
+        """Get global state representation (for CTDE algorithms) - optimized version"""
+        # Reduced dimension from 200 to 120 for performance
+        global_state = np.zeros(120, dtype=np.float32)
         idx = 0
 
-        # All agent states (6 agents * 20 dimensions = 120)
+        # Simplified agent states (6 agents * 12 dimensions = 72)
         for agent_id in sorted(self.agent_ids):
             agent = self.agents[agent_id]
 
-            # Position and role (5 dimensions)
+            # Position and role (5 dimensions) - keep as is
             global_state[idx] = agent.position.x / self.config.grid_size
             idx += 1
             global_state[idx] = agent.position.y / self.config.grid_size
             idx += 1
-            role_one_hot = [0, 0, 0]
-            role_one_hot[agent.type.value] = 1
-            global_state[idx:idx+3] = role_one_hot
+            global_state[idx + agent.type.value] = 1.0  # Direct indexing
             idx += 3
 
-            # Inventory and energy (7 dimensions)
+            # Simplified inventory and status (7 dimensions) -> reduced to 7
             global_state[idx] = agent.inventory[ResourceType.GOLD] / 10.0
             idx += 1
             global_state[idx] = agent.inventory[ResourceType.WOOD] / 10.0
             idx += 1
             global_state[idx] = agent.energy / 100.0
             idx += 1
-            global_state[idx] = agent.action_cooldown / 2.0
-            idx += 1
-            global_state[idx] = agent.move_points / 2.0
-            idx += 1
             global_state[idx] = 1.0 if agent.is_at_base else 0.0
             idx += 1
             global_state[idx] = 1.0 if agent.is_carrying_resources else 0.0
             idx += 1
+            global_state[idx] = agent.move_points / 2.0
+            idx += 1
 
-        # Resource states (10 gold + 10 wood * 3 dimensions = 60)
-        all_resources = [r for r in self.game_state.resources if r.is_active]
-        max_resources = 20
+        # Simplified resource summary (24 dimensions) instead of individual resources
+        # Count resources by type and region
+        active_gold = sum(1 for r in self.game_state.resources
+                         if r.is_active and r.resource_type == ResourceType.GOLD)
+        active_wood = sum(1 for r in self.game_state.resources
+                         if r.is_active and r.resource_type == ResourceType.WOOD)
 
-        for i in range(max_resources):
-            if i < len(all_resources):
-                resource = all_resources[i]
-                global_state[idx] = resource.position.x / self.config.grid_size
-                idx += 1
-                global_state[idx] = resource.position.y / self.config.grid_size
-                idx += 1
-                resource_type_one_hot = [0, 0]
-                resource_type_one_hot[resource.resource_type.value] = 1
-                global_state[idx:idx+2] = resource_type_one_hot
-                idx += 2
-            else:
-                global_state[idx:idx+3] = 0.0
-                idx += 3
+        # Resource counts (2 dimensions)
+        global_state[idx] = active_gold / 10.0
+        idx += 1
+        global_state[idx] = active_wood / 20.0
+        idx += 1
 
-        # Global game state (20 dimensions)
+        # Resource locations by quadrant (4 quadrants * 2 types * 2 avg_pos = 16 dimensions)
+        for quadrant in [(0, 1), (0, -1), (1, 0), (-1, 0)]:  # NE, SE, SW, NW
+            qx_offset, qy_offset = quadrant
+            for rtype in [ResourceType.GOLD, ResourceType.WOOD]:
+                resources_in_quad = []
+                for r in self.game_state.resources:
+                    if (r.is_active and r.resource_type == rtype):
+                        center_x = self.config.grid_size / 2
+                        center_y = self.config.grid_size / 2
+                        if ((r.position.x - center_x) * qx_offset >= 0 and
+                            (r.position.y - center_y) * qy_offset >= 0):
+                            resources_in_quad.append(r)
+
+                if resources_in_quad:
+                    avg_x = sum(r.position.x for r in resources_in_quad) / len(resources_in_quad)
+                    avg_y = sum(r.position.y for r in resources_in_quad) / len(resources_in_quad)
+                    global_state[idx] = avg_x / self.config.grid_size
+                    idx += 1
+                    global_state[idx] = avg_y / self.config.grid_size
+                    idx += 1
+                else:
+                    global_state[idx] = 0.0
+                    idx += 1
+                    global_state[idx] = 0.0
+                    idx += 1
+
+        # Global game state (24 dimensions) - simplified
         global_state[idx] = self.game_state.total_score / 1000.0
         idx += 1
         global_state[idx] = self.game_state.deposited_resources[ResourceType.GOLD] / 20.0
@@ -716,6 +750,15 @@ class HRGEnv:
         global_state[idx] = self.game_state.deposited_resources[ResourceType.WOOD] / 50.0
         idx += 1
         global_state[idx] = self.game_state.current_step / self.game_state.max_steps
+        idx += 1
+
+        # Team composition summary (3 dimensions)
+        agent_types = [agent.type for agent in self.agents.values()]
+        global_state[idx] = sum(1 for t in agent_types if t == AgentType.SCOUT) / 6.0
+        idx += 1
+        global_state[idx] = sum(1 for t in agent_types if t == AgentType.WORKER) / 6.0
+        idx += 1
+        global_state[idx] = sum(1 for t in agent_types if t == AgentType.TRANSPORTER) / 6.0
         idx += 1
 
         # Pad remaining dimensions
@@ -730,7 +773,7 @@ def create_hrg_env(difficulty: str = "normal", **kwargs) -> HRGEnv:
     Create HRG environment with predefined difficulty settings
 
     Args:
-        difficulty: Difficulty level ("easy", "normal", "hard")
+        difficulty: Difficulty level ("easy", "normal", "hard", "fast_training")
         **kwargs: Additional configuration parameters
 
     Returns:
@@ -752,6 +795,16 @@ def create_hrg_env(difficulty: str = "normal", **kwargs) -> HRGEnv:
             num_obstacles=20,
             num_gold=4,
             num_wood=8,
+            **kwargs
+        )
+    elif difficulty == "fast_training":
+        config = HRGConfig(
+            grid_size=6,
+            max_steps=100,
+            num_obstacles=0,
+            num_gold=1,
+            num_wood=5,
+            render_mode=None,
             **kwargs
         )
     else:  # normal

@@ -60,18 +60,18 @@ class HRGCTDEWrapper(HRGEnv):
             return
 
         if self.global_state_type == "concat":
-            # Concatenate all agent observations
-            single_obs_dim = 80
+            # Concatenate all agent observations (optimized to 60 dims)
+            single_obs_dim = 60
             self._global_state_dim = single_obs_dim * self.n_agents
         elif self.global_state_type in ["mean", "max"]:
-            # Mean or max pooling over observations
-            self._global_state_dim = 80
+            # Mean or max pooling over observations (optimized to 60 dims)
+            self._global_state_dim = 60
         elif self.global_state_type == "attention":
-            # Attention mechanism with agent count info
-            self._global_state_dim = 80 + self.n_agents
+            # Attention mechanism with agent count info (optimized to 60 dims)
+            self._global_state_dim = 60 + self.n_agents
         else:
-            # Default to concatenation
-            self._global_state_dim = 80 * self.n_agents
+            # Default to concatenation (optimized)
+            self._global_state_dim = 60 * self.n_agents
 
     @property
     def global_state_dim(self) -> int:
@@ -115,8 +115,8 @@ class HRGCTDEWrapper(HRGEnv):
                 obs = observations[agent_id]
                 state_parts.append(obs.flatten())
             else:
-                # Use zeros if observation not available
-                state_parts.append(np.zeros(80))
+                # Use zeros if observation not available (optimized to 60 dims)
+                state_parts.append(np.zeros(60))
 
         global_state = np.concatenate(state_parts)
 

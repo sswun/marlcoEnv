@@ -33,7 +33,7 @@ class CMConfig:
     box_move_reward_scale: float = 0.5
 
     # Goal rewards
-    goal_reached_reward: float = 10.0
+    goal_reached_reward: float = 50.0  # 大幅增加目标奖励
     distance_reward_scale: float = 0.5
 
     # Collision settings
@@ -121,10 +121,11 @@ def get_easy_config() -> CMConfig:
         n_agents=2,
         max_steps=100,
         push_success_probs={1: 0.7, 2: 0.9, 3: 1.0, 4: 1.0},
-        cooperation_reward=0.03,
-        time_penalty=-0.005,
-        goal_reached_reward=15.0,
-        distance_reward_scale=0.8
+        cooperation_reward=0.5,  # 增加合作奖励
+        time_penalty=-0.1,  # 增加时间惩罚
+        goal_reached_reward=80.0,  # 大幅增加目标奖励
+        distance_reward_scale=2.0,  # 增加距离奖励
+        box_move_reward_scale=5.0  # 增加移动奖励
     )
 
 
@@ -135,10 +136,11 @@ def get_normal_config() -> CMConfig:
         n_agents=2,
         max_steps=100,
         push_success_probs={1: 0.5, 2: 0.75, 3: 0.9, 4: 1.0},
-        cooperation_reward=0.02,
-        time_penalty=-0.01,
-        goal_reached_reward=10.0,
-        distance_reward_scale=0.5
+        cooperation_reward=1.5,  # 稍微增加合作奖励
+        time_penalty=-0.3,  # 增加时间惩罚以降低随机奖励
+        goal_reached_reward=50.0,  # 保持主要奖励信号
+        distance_reward_scale=0.3,  # 降低距离奖励
+        box_move_reward_scale=1.0  # 降低移动奖励
     )
 
 
@@ -149,10 +151,11 @@ def get_hard_config() -> CMConfig:
         n_agents=3,
         max_steps=150,
         push_success_probs={1: 0.3, 2: 0.6, 3: 0.85, 4: 1.0},
-        cooperation_reward=0.015,
-        time_penalty=-0.015,
-        goal_reached_reward=8.0,
-        distance_reward_scale=0.3
+        cooperation_reward=0.2,  # 增加合作奖励
+        time_penalty=-0.2,  # 增加时间惩罚
+        goal_reached_reward=100.0,  # 大幅增加目标奖励
+        distance_reward_scale=1.0,  # 增加距离奖励
+        box_move_reward_scale=2.0  # 增加移动奖励
     )
 
 

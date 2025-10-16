@@ -73,6 +73,12 @@ class CooperativeMovingEnv(gym.Env):
         self.game_state: Optional[CMGameState] = None
         self.current_step = 0
 
+        # Enhanced reward tracking
+        self._last_box_distance = None
+        self._last_agent_positions = {}
+        self._steps_without_progress = 0
+        self._first_agent_at_box = False
+
         # Rendering
         self.render_mode = config.render_mode
         self.fig = None
@@ -93,6 +99,12 @@ class CooperativeMovingEnv(gym.Env):
             random.seed(seed)
 
         self.current_step = 0
+
+        # Initialize enhanced reward tracking
+        self._last_box_distance = None
+        self._last_agent_positions = {}
+        self._steps_without_progress = 0
+        self._first_agent_at_box = False
 
         # Initialize box position (center area)
         box_x = self.config.grid_size // 2 - 1
@@ -308,28 +320,57 @@ class CooperativeMovingEnv(gym.Env):
         return False
 
     def _calculate_rewards(self, collision_penalty: float, box_moved: bool) -> Dict[str, float]:
-        """Calculate rewards for all agents."""
-        # Base time penalty
+        """Calculate selective rewards to discourage random exploration."""
+        # Base time penalty (stronger now)
         reward = self.config.time_penalty + collision_penalty
 
-        # Cooperation reward
+        # Get current positions and distances
+        box_center = np.array(self.game_state.box.get_center())
+        goal_center = np.array(self.game_state.goal.get_center())
+        current_box_distance = np.linalg.norm(box_center - goal_center)
+
+        # 1. Distance improvement reward - only for meaningful progress
+        if self._last_box_distance is not None:
+            distance_improvement = self._last_box_distance - current_box_distance
+            # Higher threshold for meaningful improvement
+            if distance_improvement > 0.2:  # Only reward significant progress
+                reward += distance_improvement * self.config.distance_reward_scale
+
+        # Update last distance for next step
+        self._last_box_distance = current_box_distance
+
+        # 2. Box movement reward - only if movement is toward goal
+        if box_moved and hasattr(self, '_prev_box_position'):
+            prev_center = np.array([
+                self._prev_box_position.x + self.config.box_size / 2,
+                self._prev_box_position.y + self.config.box_size / 2
+            ])
+            prev_distance = np.linalg.norm(prev_center - goal_center)
+
+            # Only reward movement toward goal
+            if current_box_distance < prev_distance:
+                reward += self.config.box_move_reward_scale
+
+        # 3. Cooperation reward - only when actually pushing together
         pushing_sides = self.game_state.get_push_sides()
-        if len(pushing_sides) > 1:
-            reward += self.config.cooperation_reward * len(pushing_sides)
+        n_pushing = len(pushing_sides)
 
-        # Distance-based reward
-        box_center = self.game_state.box.get_center()
-        goal_center = self.game_state.goal.get_center()
-        distance = np.linalg.norm(np.array(box_center) - np.array(goal_center))
-        reward -= distance * self.config.distance_reward_scale * 0.01  # Scale down distance
+        if n_pushing > 1:
+            cooperation_bonus = self.config.cooperation_reward * (n_pushing - 1)
+            reward += cooperation_bonus
 
-        # Box movement reward
-        if box_moved:
-            reward += self.config.box_move_reward_scale
-
-        # Goal reached reward
+        # 4. Goal reached reward - main reward signal
         if self.game_state.is_complete():
             reward += self.config.goal_reached_reward
+
+            # Efficiency bonus for quick completion
+            if self.current_step < self.config.max_steps * 0.5:
+                reward += 15.0  # Bonus for fast completion
+            elif self.current_step < self.config.max_steps * 0.7:
+                reward += 5.0  # Smaller bonus
+
+        # Store current box position for next step
+        self._prev_box_position = self.game_state.box.position.copy()
 
         # All agents receive the same reward (team reward)
         return {agent_id: reward for agent_id in self.agent_ids}

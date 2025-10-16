@@ -132,6 +132,70 @@ class HRGPresetConfigs:
         )
 
     @staticmethod
+    def fast_training() -> HRGEnvironmentConfig:
+        """Ultra-fast configuration for quick training iterations"""
+        return HRGEnvironmentConfig(
+            grid_size=6,
+            max_steps=100,
+            num_obstacles=0,
+            num_gold=1,
+            num_wood=5,
+            gold_cluster_center=(4, 4),
+            gold_respawn_time=25,  # Faster respawn
+            wood_respawn_time=25,  # Faster respawn
+            scout_vision_range=3,  # Reduced for performance
+            worker_vision_range=2,  # Reduced for performance
+            transporter_vision_range=3,  # Reduced for performance
+            worker_carry_capacity=5,  # Increased capacity for faster completion
+            transporter_carry_capacity=10,  # Increased capacity
+            worker_gather_time=1,  # Faster gathering
+            gather_reward_ratio=0.3,  # Higher immediate rewards
+            transfer_reward_ratio=0.1,  # Higher transfer rewards
+            deposit_reward_ratio=0.7,  # Higher deposit rewards
+            step_penalty=0.001,  # Almost no time penalty
+            render_mode=None,  # Disable rendering for performance
+            curriculum_difficulty="easy"
+        )
+
+    @staticmethod
+    def ultra_fast() -> HRGEnvironmentConfig:
+        """Ultra-ultra fast configuration with minimal agents"""
+        return HRGEnvironmentConfig(
+            grid_size=6,
+            max_steps=80,
+            num_obstacles=2,
+            num_gold=1,
+            num_wood=4,
+            # Minimal agent configuration
+            agent_config={
+                'scouts': [],  # No scouts
+                'workers': [AgentType.WORKER],  # Only 1 worker
+                'transporters': [AgentType.TRANSPORTER]  # Only 1 transporter
+            },
+            # Enhanced vision for better learning with fewer agents
+            worker_vision_range=2,
+            transporter_vision_range=3,
+            # High capacity for efficiency
+            worker_carry_capacity=5,
+            transporter_carry_capacity=10,
+            # Fast gathering
+            worker_gather_time=1,
+            # High rewards for speed
+            gather_reward_ratio=0.4,
+            transfer_reward_ratio=0.2,
+            deposit_reward_ratio=0.8,
+            # Minimal penalties
+            step_penalty=0.001,
+            invalid_move_penalty=0.05,
+            # Fast respawn
+            gold_respawn_time=20,
+            wood_respawn_time=20,
+            # Disable rendering
+            render_mode=None,
+            curriculum_difficulty="easy"
+        )
+
+    @staticmethod
     def normal() -> HRGEnvironmentConfig:
         """Normal configuration for standard evaluation"""
         return HRGEnvironmentConfig(
@@ -315,6 +379,7 @@ def get_config_by_name(config_name: str, **kwargs) -> HRGEnvironmentConfig:
         'coordination': HRGPresetConfigs.coordination_focused,
         'exploration': HRGPresetConfigs.exploration_focused,
         'role_test': HRGPresetConfigs.role_specialization_test,
+        'ultra_fast': HRGPresetConfigs.ultra_fast,
     }
 
     if config_name not in config_map:

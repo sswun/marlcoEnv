@@ -107,7 +107,7 @@ class Resource:
         return 50 if self.resource_type == ResourceType.GOLD else 50
 
     def update_respawn(self):
-        """Update respawn timer"""
+        """Update respawn timer - optimized version"""
         if not self.is_active and self.respawn_timer > 0:
             self.respawn_timer -= 1
             if self.respawn_timer == 0:
@@ -293,24 +293,21 @@ class GameState:
         return position not in self.obstacles
 
     def get_visible_positions(self, agent: Agent) -> List[Position]:
-        """Get positions visible to agent using line of sight"""
+        """Get positions visible to agent - optimized version"""
         visible = []
         vision_range = agent.config.vision_range
 
+        # Use simple Manhattan distance for speed
         for x in range(max(0, agent.position.x - vision_range),
                       min(self.grid_size, agent.position.x + vision_range + 1)):
             for y in range(max(0, agent.position.y - vision_range),
                           min(self.grid_size, agent.position.y + vision_range + 1)):
                 pos = Position(x, y)
-                if self._has_line_of_sight(agent.position, pos):
+                # Fast distance check
+                if (abs(pos.x - agent.position.x) + abs(pos.y - agent.position.y)) <= vision_range:
                     visible.append(pos)
 
         return visible
-
-    def _has_line_of_sight(self, from_pos: Position, to_pos: Position) -> bool:
-        """Check if there's line of sight between two positions (simple Manhattan)"""
-        # Simple implementation: check Manhattan distance
-        return from_pos.distance_to(to_pos) <= 5  # Max vision range
 
     def add_agent(self, agent: Agent):
         """Add agent to game state"""
@@ -359,12 +356,15 @@ class GameState:
         return self.current_step >= self.max_steps
 
     def update(self):
-        """Update game state for one step"""
+        """Update game state for one step - optimized version"""
         self.current_step += 1
 
-        # Update resources (respawn timers)
+        # Only update resources that need updating (inactive ones with timers)
         for resource in self.resources:
-            resource.update_respawn()
+            if not resource.is_active and resource.respawn_timer > 0:
+                resource.respawn_timer -= 1
+                if resource.respawn_timer == 0:
+                    resource.respawn()
 
 
 # Predefined agent configurations

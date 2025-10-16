@@ -88,6 +88,14 @@ class MSFSEnv(gym.Env):
                 agent_id=agent_id,
                 current_workstation=workstation
             )
+
+            # Initialize tracking attributes for reward system
+            agent._last_action = None
+            agent._last_action_invalid = False
+            agent._last_handoff = False
+            agent._prepared_station = False
+            agent._role_switch = False
+
             self.game_state.agents[agent_id] = agent
 
     def _initialize_workstations(self) -> None:
@@ -240,6 +248,10 @@ class MSFSEnv(gym.Env):
 
     def _execute_single_agent_action(self, agent: Agent, action: ActionType) -> None:
         """Execute action for a single agent"""
+        # Track action for reward calculation
+        agent._last_action = action
+        agent._last_action_invalid = False
+
         if action == ActionType.WAIT:
             return
         elif action in [ActionType.MOVE_TO_RAW, ActionType.MOVE_TO_ASSEMBLY, ActionType.MOVE_TO_PACKING]:
@@ -252,6 +264,9 @@ class MSFSEnv(gym.Env):
             self._execute_agent_complete_stage(agent)
         elif action == ActionType.DELIVER_ORDER:
             self._execute_agent_deliver_order(agent)
+        else:
+            # Invalid action
+            agent._last_action_invalid = True
 
     def _execute_agent_move(self, agent: Agent, action: ActionType) -> None:
         """Execute movement action for agent"""
@@ -265,6 +280,10 @@ class MSFSEnv(gym.Env):
         }.get(action)
 
         if target_workstation and agent.current_workstation != target_workstation:
+            # Track role switching (moving to different workstation type)
+            if agent.current_workstation != target_workstation:
+                agent._role_switch = True
+
             agent.move_to(target_workstation)
             logger.debug(f"{agent.agent_id} moved to {target_workstation.name}")
 
@@ -325,6 +344,14 @@ class MSFSEnv(gym.Env):
                 if next_station.add_order(agent.carrying_order):
                     agent.carrying_order.current_stage = next_stage
                     agent.carrying_order.processing_progress = 0
+
+                    # Track cooperation: preparing station for other agents
+                    if next_station.get_queue_length() == 1:  # This agent made the station ready
+                        agent._prepared_station = True
+
+                    # Track cooperation: successful handoff
+                    if agent.current_workstation != next_workstation:
+                        agent._last_handoff = True
 
                     # Track specialization
                     agent.specialization_count[agent.current_workstation] += 1
@@ -397,49 +424,226 @@ class MSFSEnv(gym.Env):
                 self.game_state.station_utilization[workstation_type] += 1.0
 
     def _calculate_rewards(self, prev_stats: Dict[str, float], terminated: bool) -> Dict[str, float]:
-        """Calculate rewards for all agents"""
+        """
+        Enhanced reward calculation system for better exploration
+
+        This system provides dense, immediate feedback for meaningful actions
+        to encourage random exploration and learning.
+        """
         rewards = {agent_id: 0.0 for agent_id in self.game_state.agents.keys()}
 
-        # Team-based rewards (shared among all agents)
-        team_reward = 0.0
+        # Track agent actions for immediate feedback
+        action_rewards = self._calculate_action_rewards()
 
-        # Order completion rewards
+        # Track progress rewards for milestones
+        progress_rewards = self._calculate_progress_rewards(prev_stats)
+
+        # Track cooperation rewards for teamwork
+        cooperation_rewards = self._calculate_cooperation_rewards()
+
+        # Track role emergence rewards
+        role_rewards = self._calculate_role_rewards()
+
+        # Apply light penalties only for invalid actions
+        penalty_rewards = self._calculate_penalties()
+
+        # Combine all reward types
+        for agent_id in rewards.keys():
+            rewards[agent_id] = (
+                action_rewards.get(agent_id, 0.0) +
+                progress_rewards.get(agent_id, 0.0) +
+                cooperation_rewards.get(agent_id, 0.0) +
+                role_rewards.get(agent_id, 0.0) +
+                penalty_rewards.get(agent_id, 0.0)
+            )
+
+        self.game_state.total_reward += sum(rewards.values())
+        return rewards
+
+    def _calculate_action_rewards(self) -> Dict[str, float]:
+        """Calculate immediate rewards for agent actions"""
+        rewards = {}
+
+        for agent_id, agent in self.game_state.agents.items():
+            reward = 0.0
+
+            # Track actions from previous step using agent state
+            if hasattr(agent, '_last_action') and agent._last_action is not None:
+                action = agent._last_action
+
+                # Movement rewards (if moving toward productive target)
+                if action in [ActionType.MOVE_TO_RAW, ActionType.MOVE_TO_ASSEMBLY, ActionType.MOVE_TO_PACKING]:
+                    target_station = {
+                        ActionType.MOVE_TO_RAW: WorkstationType.RAW,
+                        ActionType.MOVE_TO_ASSEMBLY: WorkstationType.ASSEMBLY,
+                        ActionType.MOVE_TO_PACKING: WorkstationType.PACKING
+                    }.get(action)
+
+                    # Reward moving to station with work
+                    if target_station:
+                        station = self.game_state.workstations[target_station]
+                        if station.get_queue_length() > 0 or agent.carrying_order:
+                            reward += self.config.move_toward_target
+
+                # Pickup rewards
+                elif action == ActionType.PULL_ORDER and agent.carrying_order is not None:
+                    reward += self.config.pickup_material
+
+                # Processing rewards
+                elif action == ActionType.START_PROCESSING and agent.carrying_order is not None:
+                    processing_time = agent.carrying_order.get_processing_time(agent.current_workstation)
+                    if agent.carrying_order.processing_progress == 1:  # Just started
+                        reward += self.config.start_processing
+                    elif agent.carrying_order.processing_progress >= processing_time:  # Just finished
+                        reward += self.config.complete_stage
+
+                # Stage completion rewards
+                elif action == ActionType.COMPLETE_STAGE and agent.carrying_order is not None:
+                    if agent.carrying_order.current_stage <= 3:
+                        reward += self.config.complete_stage
+
+                # Delivery rewards
+                elif action == ActionType.DELIVER_ORDER:
+                    reward += self.config.deliver_order
+
+            rewards[agent_id] = reward
+
+        return rewards
+
+    def _calculate_progress_rewards(self, prev_stats: Dict[str, float]) -> Dict[str, float]:
+        """Calculate milestone-based progress rewards"""
+        rewards = {agent_id: 0.0 for agent_id in self.game_state.agents.keys()}
+
+        # Track order progress
         orders_completed = self.game_state.orders_completed - prev_stats['orders_completed']
         simple_completed = self.game_state.simple_orders_completed - prev_stats['simple_orders_completed']
         complex_completed = self.game_state.complex_orders_completed - prev_stats['complex_orders_completed']
 
-        team_reward += simple_completed * self.config.simple_order_value
-        team_reward += complex_completed * self.config.complex_order_value
+        team_progress_reward = 0.0
 
-        # Role emergence rewards
-        if self.config.enable_role_emergence_rewards:
-            # Specialization rewards
-            specialization_events = self.game_state.specialization_events
-            prev_specialization = prev_stats.get('specialization_events', 0)
-            new_specializations = specialization_events - prev_specialization
-            team_reward += new_specializations * self.config.specialization_reward
+        # Order completion progress rewards
+        if orders_completed > 0:
+            # Base completion rewards
+            team_progress_reward += simple_completed * self.config.simple_order_value
+            team_progress_reward += complex_completed * self.config.complex_order_value
 
-            # Finishing phase rewards
-            if self.game_state.current_step >= self.config.finishing_phase_start:
-                # Check if orders were completed from existing WIP
-                if orders_completed > 0:
-                    team_reward += orders_completed * self.config.finishing_reward
+            # Enhanced progress rewards
+            team_progress_reward += simple_completed * self.config.raw_completion    # RAW stage
+            team_progress_reward += simple_completed * self.config.assembly_completion  # ASSEMBLY stage
+            team_progress_reward += simple_completed * self.config.packaging_completion # PACKING stage
+            team_progress_reward += simple_completed * self.config.order_delivery     # Final delivery
 
-        # Efficiency penalties
-        team_reward -= self.config.step_penalty * len(self.game_state.agents)
+            # Extra rewards for complex orders
+            team_progress_reward += complex_completed * (self.config.raw_completion * 1.5)
+            team_progress_reward += complex_completed * (self.config.assembly_completion * 1.5)
+            team_progress_reward += complex_completed * (self.config.packaging_completion * 1.5)
+            team_progress_reward += complex_completed * (self.config.order_delivery * 1.5)
 
-        # Additional penalties for idle agents
-        idle_agents = sum(1 for agent in self.game_state.agents.values()
-                         if not agent.carrying_order and agent.move_cooldown == 0)
-        team_reward -= idle_agents * self.config.idle_penalty
+        # Smooth workflow bonuses
+        # Check for efficient transitions between stations
+        active_stations = sum(1 for ws in self.game_state.workstations.values()
+                             if ws.get_queue_length() > 0 or ws.current_order)
+        if active_stations >= 2:
+            team_progress_reward += self.config.concurrent_processing
 
-        # Distribute team reward equally among all agents
+        # No queue buildup bonus
+        total_queue_length = sum(ws.get_queue_length() for ws in self.game_state.workstations.values())
+        if total_queue_length <= len(self.game_state.agents):
+            team_progress_reward += self.config.no_queue_bonus
+
+        # Distribute progress rewards equally
         if self.game_state.agents:
-            reward_per_agent = team_reward / len(self.game_state.agents)
+            reward_per_agent = team_progress_reward / len(self.game_state.agents)
             for agent_id in rewards:
                 rewards[agent_id] = reward_per_agent
 
-        self.game_state.total_reward += sum(rewards.values())
+        return rewards
+
+    def _calculate_cooperation_rewards(self) -> Dict[str, float]:
+        """Calculate cooperation-based rewards"""
+        rewards = {agent_id: 0.0 for agent_id in self.game_state.agents.keys()}
+
+        team_cooperation_reward = 0.0
+
+        # Track successful handoffs between agents
+        for agent in self.game_state.agents.values():
+            if hasattr(agent, '_last_handoff') and agent._last_handoff:
+                team_cooperation_reward += self.config.successful_handoff
+                agent._last_handoff = False  # Reset flag
+
+        # Track workstation preparation for other agents
+        for agent in self.game_state.agents.values():
+            if hasattr(agent, '_prepared_station') and agent._prepared_station:
+                team_cooperation_reward += self.config.workstation_ready
+                agent._prepared_station = False  # Reset flag
+
+        # Check for balanced workload distribution
+        if len(self.game_state.agents) > 1:
+            agents_per_station = len(self.game_state.agents) // 3
+            station_distribution = {}
+            for agent in self.game_state.agents.values():
+                station = agent.current_workstation
+                station_distribution[station] = station_distribution.get(station, 0) + 1
+
+            # Reward balanced distribution
+            if len(set(station_distribution.values())) <= 2:  # Relatively balanced
+                team_cooperation_reward += self.config.balanced_workload
+
+        # Distribute cooperation rewards equally
+        if self.game_state.agents:
+            reward_per_agent = team_cooperation_reward / len(self.game_state.agents)
+            for agent_id in rewards:
+                rewards[agent_id] = reward_per_agent
+
+        return rewards
+
+    def _calculate_role_rewards(self) -> Dict[str, float]:
+        """Calculate role emergence rewards"""
+        rewards = {agent_id: 0.0 for agent_id in self.game_state.agents.keys()}
+
+        if not self.config.enable_role_emergence_rewards:
+            return rewards
+
+        for agent_id, agent in self.game_state.agents.items():
+            role_reward = 0.0
+
+            # Specialization focus rewards
+            if agent.consecutive_specialization[WorkstationType.RAW] >= 2:
+                role_reward += self.config.collector_focus
+            if agent.consecutive_specialization[WorkstationType.ASSEMBLY] >= 2:
+                role_reward += self.config.processor_focus
+            if agent.consecutive_specialization[WorkstationType.PACKING] >= 2:
+                role_reward += self.config.packager_focus
+
+            # Role consistency rewards
+            total_specializations = sum(agent.consecutive_specialization.values())
+            max_specialization = max(agent.consecutive_specialization.values()) if agent.consecutive_specialization else 0
+            if max_specialization >= 3 and max_specialization == total_specializations:
+                role_reward += self.config.stick_to_role
+
+            # Adaptive role switching rewards (when needed)
+            if hasattr(agent, '_role_switch') and agent._role_switch:
+                role_reward += self.config.switch_when_needed
+                agent._role_switch = False  # Reset flag
+
+            rewards[agent_id] = role_reward
+
+        return rewards
+
+    def _calculate_penalties(self) -> Dict[str, float]:
+        """Calculate light penalties for exploration"""
+        rewards = {agent_id: 0.0 for agent_id in self.game_state.agents.keys()}
+
+        for agent_id, agent in self.game_state.agents.items():
+            penalty = 0.0
+
+            # Only penalize clearly invalid actions (very light penalty)
+            if hasattr(agent, '_last_action_invalid') and agent._last_action_invalid:
+                penalty += self.config.invalid_action_penalty
+                agent._last_action_invalid = False  # Reset flag
+
+            rewards[agent_id] = penalty
+
         return rewards
 
     def _get_zero_rewards(self) -> Dict[str, float]:

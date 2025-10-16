@@ -152,28 +152,28 @@ class DEMEnv:
 
     def _calculate_observation_dim(self) -> int:
         """Calculate the dimension of observation space"""
-        # Self state: 7 dimensions
+        # Self state: 8 dimensions
         # pos (2 normalized), hp (1), cooldown (1), guarding (1), vip_dist (1), target_dist (1), in_forest (1)
-        self_dim = 7
+        self_dim = 8
 
-        # VIP state: 5 dimensions
+        # VIP state: 6 dimensions
         # visible (1), hp (1), relative_pos (2), under_attack (1), adjacent (1)
-        vip_dim = 5
+        vip_dim = 6
 
         # Teammates: max 2 teammates * 6 dimensions each
         # relative_pos (2), hp (1), adjacent_to_vip (1), guarding (1), cooldown (1)
         teammates_dim = 12
 
-        # Threats: max 5 threats * 4 dimensions each
+        # Threats: max 5 threats * 5 dimensions each
         # type (1), relative_pos (2), hp (1), cooldown (1)
-        threats_dim = 20
+        threats_dim = 25
 
         # Communication: 3 messages * 2 dimensions each
         # type (1), age (1)
         comm_dim = 6
 
         # Additional info: 2 dimensions
-        # step_normalized (1), max_steps_normalized (1)
+        # step_normalized (1), constant (1)
         info_dim = 2
 
         total_dim = self_dim + vip_dim + teammates_dim + threats_dim + comm_dim + info_dim
