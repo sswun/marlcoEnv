@@ -540,11 +540,11 @@ global_state = ctde_env.get_global_state()
 如果您在研究中使用这些环境,请引用:
 
 ```bibtex
-@misc{marl_envs_2024,
-  title={Multi-Agent Reinforcement Learning Environments},
-  author={Your Name},
-  year={2024},
-  url={https://github.com/yourusername/MARL}
+@misc{marl_envs_2025,
+  title={Multi-Agent Reinforcement Learning Environments for cooperation},
+  author={Shuwei Sun},
+  year={2025},
+  url={https://github.com/sswun/marlcoEnv}
 }
 ```
 
