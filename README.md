@@ -540,11 +540,11 @@ Interactive Jupyter tutorials are provided for each environment:
 If you use these environments in your research, please cite:
 
 ```bibtex
-@misc{marl_envs_2024,
-  title={Multi-Agent Reinforcement Learning Environments},
-  author={Your Name},
-  year={2024},
-  url={https://github.com/yourusername/MARL}
+@misc{marl_envs_2025,
+  title={Multi-Agent Reinforcement Learning Environments for cooperation},
+  author={Shuwei Sun},
+  year={2025},
+  url={https://github.com/sswun/marlcoEnv}
 }
 ```
 
